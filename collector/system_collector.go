@@ -353,6 +353,9 @@ func (s *SystemCollector) Collect(ch chan<- prometheus.Metric) {
 			} else {
 				wg9 := &sync.WaitGroup{}
 				wg9.Add(len(pcieFunctions))
+
+				pcieFunctions = duplicatePCIE(pcieFunctions) // todo if device.Name duplicate, set "pcieFunctions.Name (index++)"
+
 				for _, pcieFunction := range pcieFunctions {
 					go parsePcieFunction(ch, systemHostName, pcieFunction, wg9)
 				}
@@ -545,6 +548,32 @@ func parsePcieFunction(ch chan<- prometheus.Metric, systemHostName string, pcieF
 	if pciFunctionHealthStateValue, ok := parseCommonStatusHealth(pciFunctionHealthState); ok {
 		ch <- prometheus.MustNewConstMetric(systemMetrics["system_pcie_function_health_state"].desc, prometheus.GaugeValue, pciFunctionHealthStateValue, systemPCIeFunctionLabelLabelValues...)
 	}
+}
+
+func duplicatePCIE(pcie []*redfish.PCIeFunction) []*redfish.PCIeFunction {
+	var (
+		count = make(map[string]int)
+		first = make(map[string]int)
+		index int
+	)
+
+	for i, v := range pcie {
+		if _, ok := first[v.Name]; !ok {
+			first[v.Name] = i
+			count[v.Name] = 1
+			continue
+		}
+
+		index = count[v.Name] + 1
+		if index == 2 {
+			pcie[first[v.Name]].Name = fmt.Sprintf("%s (%d)", v.Name, 1)
+		}
+		count[v.Name] = index
+
+		pcie[i].Name = fmt.Sprintf("%s (%d)", v.Name, index)
+	}
+
+	return pcie
 }
 
 func duplicateDevices(devices []redfish.Device) []redfish.Device {
